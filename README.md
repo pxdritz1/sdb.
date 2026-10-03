@@ -1,8 +1,38 @@
-# StringDuper
+# sdb. (string dupers back.)
 
-Paper 26.2 plugin that restores string duplication when water flows from a waterlogged trapdoor into attached tripwire. The listener validates both block states, cancels the flow only when duplication is allowed, and drops one string. It uses Paper events and does not depend on pistons or NMS.
+## summary
 
-## Configuration
+brings string dupers back. configurable by tick, second, and hour, with a simple on/off toggle.
+
+## description
+
+![sdb.](assets/banner.png)
+
+brings string dupers back to minecraft.
+
+### features
+
+- configurable limits: set the duper rate per tick, per second, and per hour
+- toggle: on or off, in game or in the config
+
+### usage
+
+1. drop the jar into your `plugins` folder
+2. start the server to generate `config.yml`
+3. adjust the limits to your liking
+4. toggle it with `/stringduper <on|off|toggle>`
+
+### commands
+
+| command | description |
+| --- | --- |
+| `/stringduper on` | enables the duper |
+| `/stringduper off` | disables the duper |
+| `/stringduper toggle` | flips the current state |
+
+operators only.
+
+### configuration
 
 ```yaml
 enabled: true
@@ -16,10 +46,13 @@ limits:
   per-hour: 5000.0
 ```
 
-The three rates are converted to strings per second using 20 ticks per second. The lowest equivalent rate is used by one global token bucket. It refills using elapsed real time, is also capped by the per-tick rate, and has finite capacity to limit bursts. For the default values, `per-hour` is the tightest rate.
+limits are global, shared across the whole server.
 
-An active module is tracked by the world and position of its waterlogged trapdoor source. Entries expire after 60 seconds without a qualifying flow. The configured module count applies globally.
+### compatibility
 
-## Command
+- bukkit plugin, built for paper and other bukkit-based servers
+- api version 26.2
 
-Operators can use `/stringduper on`, `/stringduper off`, and `/stringduper toggle`. The startup state comes from `enabled`.
+![configurable](assets/gallery-config.png)
+
+![on or off](assets/gallery-toggle.png)
