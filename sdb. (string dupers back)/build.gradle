@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    
+
     id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
@@ -15,9 +15,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly 'io.papermc.paper:paper-api:26.2-R0.1-SNAPSHOT'
-    
-    
+    compileOnly 'io.papermc.paper:paper-api:26.2.build.129-stable'
 }
 
 processResources {

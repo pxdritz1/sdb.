@@ -1,5 +1,5 @@
 main: sdb.px.StringDuperPlugin
-version: ${version}
+version: 1.0.0
 name: sdb.
 author: pxotitas
 description: Restores string tripwire duplication with configurable global limits.
