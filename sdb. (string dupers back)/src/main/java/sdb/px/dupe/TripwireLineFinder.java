@@ -140,9 +140,14 @@ final class TripwireLineFinder {
                 }
                 List<Block> wires = new ArrayList<>();
                 Block wire = origin;
-                while (wire != cursor) {
+                int collectedWireCount = 0;
+                while (!wire.equals(cursor) && collectedWireCount < MAX_TRIPWIRE_BLOCKS) {
                     wires.add(wire.getRelative(direction));
                     wire = wire.getRelative(direction);
+                    collectedWireCount++;
+                }
+                if (!wire.equals(cursor)) {
+                    return EndpointResult.failure(Failure.MAX_LENGTH);
                 }
                 return new EndpointResult(next, hook.getFacing(), List.copyOf(wires), Failure.NONE);
             }
