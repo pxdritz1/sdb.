@@ -10,6 +10,7 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Waterlogged;
 import org.bukkit.block.data.type.Tripwire;
 import org.bukkit.block.data.type.TripwireHook;
 import org.bukkit.event.block.BlockFromToEvent;
@@ -49,7 +50,7 @@ public final class TripwireDuplicationService {
         if (target.getType() != Material.TRIPWIRE) {
             return;
         }
-        if (source.getType() != Material.WATER) {
+        if (!isWaterSource(source)) {
             logFlow(source, target, false, false, null);
             return;
         }
@@ -315,6 +316,18 @@ public final class TripwireDuplicationService {
 
     private static boolean isTripwireBlock(Block block) {
         return block.getType() == Material.TRIPWIRE || block.getType() == Material.TRIPWIRE_HOOK;
+    }
+
+    /**
+     * Water can reach the tripwire either from a plain water block or from a waterlogged
+     * block (e.g. a waterlogged trapdoor, the classic string duper feeder). For a waterlogged
+     * block, Block#getType() is the block itself (OAK_TRAPDOOR, ...), never Material.WATER.
+     */
+    private static boolean isWaterSource(Block block) {
+        if (block.getType() == Material.WATER) {
+            return true;
+        }
+        return block.getBlockData() instanceof Waterlogged waterlogged && waterlogged.isWaterlogged();
     }
 
     private void logFlow(Block source, Block target, boolean recognized, boolean valid, Boolean allowed) {
