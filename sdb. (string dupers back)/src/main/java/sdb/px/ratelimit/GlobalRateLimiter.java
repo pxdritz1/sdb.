@@ -1,16 +1,23 @@
 package sdb.px.ratelimit;
 
 public final class GlobalRateLimiter {
-    private final double tokensPerSecond;
+    private double tokensPerSecond;
     private double tokens;
     private long lastRefill = System.nanoTime();
 
     public GlobalRateLimiter(double perTick, double perSecond, double perHour) {
+        updateLimits(perTick, perSecond, perHour);
+    }
+
+    public void updateLimits(double perTick, double perSecond, double perHour) {
         double tickLimitPerSecond = validLimit(perTick) * 20.0;
         double hourLimitPerSecond = validLimit(perHour) / 3_600.0;
-        tokensPerSecond = Math.min(
+        double newTokensPerSecond = Math.min(
                 validLimit(perSecond),
                 Math.min(tickLimitPerSecond, hourLimitPerSecond));
+        tokensPerSecond = newTokensPerSecond;
+        tokens = 0.0;
+        lastRefill = System.nanoTime();
     }
 
     public boolean tryAcquire() {

@@ -7,7 +7,7 @@ api-version: '26.2'
 commands:
   stringduper:
     description: Controls the string duplication mechanic.
-    usage: /stringduper <on|off|toggle|status>
+    usage: /stringduper <on|off|toggle|reload|status>
     permission: stringduper.admin
 permissions:
   stringduper.admin:

@@ -34,7 +34,7 @@ public final class TripwireDuplicationService implements Listener {
     private final GlobalRateLimiter rateLimiter;
     private final FarmRegistry farms;
     private final TripwireLineFinder lineFinder = new TripwireLineFinder();
-    private final boolean debug;
+    private boolean debug;
     private final Map<CycleKey, PendingCycle> queuedCycles = new LinkedHashMap<>();
     private final Map<CycleKey, ActiveCycle> activeCycles = new HashMap<>();
     private final Map<CycleKey, PendingFlowRefresh> pendingFlowRefreshes = new LinkedHashMap<>();
@@ -166,6 +166,22 @@ public final class TripwireDuplicationService implements Listener {
         farms.clear();
     }
 
+    public void updateRuntimeSettings(int maxActive, boolean debug) {
+        farms.setMaxActive(maxActive);
+        this.debug = debug;
+        onMechanicStateChanged();
+    }
+
+    public void onMechanicStateChanged() {
+        if (plugin.isMechanicEnabled()) {
+            if (!queuedCycles.isEmpty() || !activeCycles.isEmpty() || !pendingFlowRefreshes.isEmpty()) {
+                startTicker();
+            }
+        } else {
+            stopTickerIfIdle();
+        }
+    }
+
     private void startTicker() {
         if (ticker == null) {
             ticker = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
@@ -179,8 +195,6 @@ public final class TripwireDuplicationService implements Listener {
         }
         currentTick++;
         if (!plugin.isMechanicEnabled()) {
-            queuedCycles.clear();
-            pendingFlowRefreshes.clear();
             rateLimitWaitLogged.clear();
             restoreDueCycles(false, false);
             stopTickerIfIdle();
@@ -359,7 +373,9 @@ public final class TripwireDuplicationService implements Listener {
     }
 
     private void stopTickerIfIdle() {
-        if (queuedCycles.isEmpty() && activeCycles.isEmpty() && pendingFlowRefreshes.isEmpty()
+        if (activeCycles.isEmpty()
+                && (!plugin.isMechanicEnabled()
+                        || queuedCycles.isEmpty() && pendingFlowRefreshes.isEmpty())
                 && ticker != null) {
             ticker.cancel();
             ticker = null;

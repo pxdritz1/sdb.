@@ -15,12 +15,16 @@ final class FarmRegistry {
     private static final BlockFace[] NEIGHBORS = {
             BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST, BlockFace.UP, BlockFace.DOWN
     };
-    private final int maxActive;
+    private int maxActive;
     private final LinkedHashMap<TripwireFarm.Key, TripwireFarm> farms = new LinkedHashMap<>();
     private final Map<BlockKey, TripwireFarm.Key> positions = new HashMap<>();
     private final Map<TripwireFarm.Key, Long> lastActivity = new HashMap<>();
 
     FarmRegistry(int maxActive) {
+        this.maxActive = Math.max(0, maxActive);
+    }
+
+    void setMaxActive(int maxActive) {
         this.maxActive = Math.max(0, maxActive);
     }
 
