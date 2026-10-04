@@ -1,0 +1,16 @@
+main: sdb.px.StringDuperPlugin
+version: 1.0.0
+name: StringDuper
+author: pxotitas
+description: Controlled tripwire string duplication for Paper.
+api-version: '26.2'
+commands:
+  stringduper:
+    description: Controls the string duplication mechanic.
+    usage: /stringduper <on|off|toggle|status>
+    permission: stringduper.admin
+permissions:
+  stringduper.admin:
+    description: Allows control of the string duplication mechanic.
+    default: op
+
