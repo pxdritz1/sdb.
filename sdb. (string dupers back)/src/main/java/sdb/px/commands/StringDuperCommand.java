@@ -36,7 +36,7 @@ public final class StringDuperCommand implements CommandExecutor {
             case "on" -> setEnabled(sender, true);
             case "off" -> setEnabled(sender, false);
             case "toggle" -> setEnabled(sender, !plugin.isMechanicEnabled());
-                case "status" -> sender.sendMessage(Component.text("String duplication is ", NamedTextColor.YELLOW)
+                case "status" -> sender.sendMessage(Component.text("sdb. duplication is ", NamedTextColor.YELLOW)
                         .append(Component.text(
                                 plugin.isMechanicEnabled() ? "enabled." : "disabled.",
                                 plugin.isMechanicEnabled() ? NamedTextColor.GREEN : NamedTextColor.RED)));
@@ -48,7 +48,7 @@ public final class StringDuperCommand implements CommandExecutor {
     private void setEnabled(CommandSender sender, boolean enabled) {
             plugin.setMechanicEnabled(enabled);
             sender.sendMessage(Component.text(
-                    "String duplication is now " + (enabled ? "enabled." : "disabled."),
+                    "sdb. duplication is now " + (enabled ? "enabled." : "disabled."),
                     NamedTextColor.GREEN));
     }
 

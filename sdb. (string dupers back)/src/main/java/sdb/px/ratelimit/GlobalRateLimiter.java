@@ -29,6 +29,10 @@ public final class GlobalRateLimiter {
         return tokensPerSecond > 0.0;
     }
 
+    public double effectiveRatePerSecond() {
+        return tokensPerSecond;
+    }
+
     private static double validLimit(double value) {
         if (!Double.isFinite(value) || value < 0.0) {
             throw new IllegalArgumentException("Rate limits must be finite and non-negative.");

@@ -1,6 +1,6 @@
 main: sdb.px.StringDuperPlugin
 version: ${version}
-name: StringDuper
+name: sdb.
 author: pxotitas
 description: Controlled tripwire string duplication for Paper.
 api-version: '26.2'

@@ -6,24 +6,28 @@ import sdb.px.commands.StringDuperCommand;
 import sdb.px.dupe.TripwireDuplicationService;
 import sdb.px.ratelimit.GlobalRateLimiter;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 public final class StringDuperPlugin extends JavaPlugin {
     private boolean mechanicEnabled;
     private TripwireDuplicationService duplicationService;
 
     @Override
     public void onEnable() {
+        migrateLegacyConfig();
         saveDefaultConfig();
         mechanicEnabled = getConfig().getBoolean("enabled", true);
 
-        GlobalRateLimiter rateLimiter = new GlobalRateLimiter(
-                getConfig().getDouble("limits.per-tick", 0.46),
-                getConfig().getDouble("limits.per-second", 20.0),
-                getConfig().getDouble("limits.per-hour", 5000.0));
+        double perTick = getConfig().getDouble("limits.per-tick", 0.4);
+        double perSecond = getConfig().getDouble("limits.per-second", 8.0);
+        double perHour = getConfig().getDouble("limits.per-hour", 28800.0);
+        int maxActive = getConfig().getInt("modules.max-active", 4);
+        boolean debug = getConfig().getBoolean("debug", false);
+        GlobalRateLimiter rateLimiter = new GlobalRateLimiter(perTick, perSecond, perHour);
         duplicationService = new TripwireDuplicationService(
-                this,
-                rateLimiter,
-                getConfig().getInt("modules.max-active", 4),
-                getConfig().getBoolean("debug", false));
+                this, rateLimiter, maxActive, debug);
 
         getServer().getPluginManager().registerEvents(duplicationService, this);
         PluginCommand command = getCommand("stringduper");
@@ -32,6 +36,14 @@ public final class StringDuperPlugin extends JavaPlugin {
         }
         StringDuperCommand executor = new StringDuperCommand(this);
         command.setExecutor(executor);
+        getLogger().info("Configuration loaded from " + getDataFolder().toPath().resolve("config.yml")
+                + ": enabled=" + mechanicEnabled
+                + ", debug=" + debug
+                + ", modules.max-active=" + maxActive
+                + ", limits.per-tick=" + perTick
+                + ", limits.per-second=" + perSecond
+                + ", limits.per-hour=" + perHour
+                + ", effective-rate-per-second=" + rateLimiter.effectiveRatePerSecond());
         getLogger().info(getPluginMeta().getName() + " has been enabled.");
     }
 
@@ -50,5 +62,22 @@ public final class StringDuperPlugin extends JavaPlugin {
         mechanicEnabled = enabled;
         getConfig().set("enabled", enabled);
         saveConfig();
+    }
+
+    private void migrateLegacyConfig() {
+        Path newConfig = getDataFolder().toPath().resolve("config.yml");
+        Path legacyConfig = getDataFolder().toPath()
+                .resolveSibling("StringDuper")
+                .resolve("config.yml");
+        if (Files.exists(newConfig) || !Files.isRegularFile(legacyConfig)) {
+            return;
+        }
+        try {
+            Files.createDirectories(newConfig.getParent());
+            Files.copy(legacyConfig, newConfig);
+            getLogger().info("Migrated configuration from " + legacyConfig + " to " + newConfig + ".");
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to migrate legacy StringDuper configuration.", exception);
+        }
     }
 }

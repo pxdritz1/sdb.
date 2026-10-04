@@ -35,9 +35,10 @@ public final class TripwireDuplicationService implements Listener {
     private final FarmRegistry farms;
     private final TripwireLineFinder lineFinder = new TripwireLineFinder();
     private final boolean debug;
-    private final Map<TripwireFarm.Key, PendingCycle> queuedCycles = new LinkedHashMap<>();
-    private final Map<TripwireFarm.Key, ActiveCycle> activeCycles = new HashMap<>();
-    private final Map<TripwireFarm.Key, PendingFlowRefresh> pendingFlowRefreshes = new LinkedHashMap<>();
+    private final Map<CycleKey, PendingCycle> queuedCycles = new LinkedHashMap<>();
+    private final Map<CycleKey, ActiveCycle> activeCycles = new HashMap<>();
+    private final Map<CycleKey, PendingFlowRefresh> pendingFlowRefreshes = new LinkedHashMap<>();
+    private final Set<CycleKey> rateLimitWaitLogged = new HashSet<>();
     private final Set<FarmRegistry.BlockKey> internalChanges = new HashSet<>();
     private BukkitTask ticker;
     private long currentTick;
@@ -66,11 +67,13 @@ public final class TripwireDuplicationService implements Listener {
         boolean waterSource = source.getType() == Material.WATER || waterlogged;
         boolean tripwireValid = target.getBlockData() instanceof Tripwire tripwire && tripwire.isAttached();
         if (!waterSource) {
-            logFlow(source, target, false, tripwireValid, false, false, false, Failure.INVALID_SOURCE);
+            logFlow(source, target, null, false, tripwireValid, false, false,
+                    "rejected", null, Failure.INVALID_SOURCE);
             return;
         }
         if (!tripwireValid) {
-            logFlow(source, target, true, false, false, false, false, Failure.TRIPWIRE_NOT_ATTACHED);
+            logFlow(source, target, null, true, false, false, false,
+                    "rejected", null, Failure.TRIPWIRE_NOT_ATTACHED);
             return;
         }
 
@@ -85,29 +88,37 @@ public final class TripwireDuplicationService implements Listener {
             farm = discovery.farm();
             failure = discovery.failure();
             if (farm == null) {
-                logFlow(source, target, true, true, false, false, false, failure);
+                logFlow(source, target, null, true, true, false, false,
+                        "rejected", null, failure);
                 return;
             }
             if (!farms.register(farm, now)) {
-                logFlow(source, target, true, true, true, false, false, Failure.MAX_ACTIVE_FARMS);
+                logFlow(source, target, farm, true, true, true, false,
+                        "rejected", null, Failure.MAX_ACTIVE_FARMS);
                 return;
             }
         }
 
-        boolean alreadyQueued = queuedCycles.containsKey(farm.key())
-                || activeCycles.containsKey(farm.key());
+        CycleKey cycleKey = CycleKey.from(farm, target);
+        boolean alreadyQueued = queuedCycles.containsKey(cycleKey)
+                || activeCycles.containsKey(cycleKey);
         if (!rateLimiter.hasPositiveRate()) {
             event.setCancelled(true);
-            logFlow(source, target, true, true, true, true, false, Failure.RATE_LIMIT_ZERO);
+            logFlow(source, target, farm, true, true, true, true,
+                    "rejected", false, Failure.RATE_LIMIT_ZERO);
             return;
         }
         event.setCancelled(true);
         if (!alreadyQueued) {
             BlockData originalData = target.getBlockData().clone();
-            queuedCycles.put(farm.key(), new PendingCycle(farm, source, target, originalData));
+            queuedCycles.put(cycleKey, new PendingCycle(farm, source, target, originalData));
             startTicker();
         }
-        logFlow(source, target, true, true, true, true, null, Failure.NONE);
+        logFlow(source, target, farm, true, true, true, true,
+                alreadyQueued ? "already-pending" : "queued", null, Failure.NONE);
+        if (!alreadyQueued) {
+            logCycle("queued", queuedCycles.get(cycleKey), "not-tested", Failure.NONE);
+        }
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -147,6 +158,7 @@ public final class TripwireDuplicationService implements Listener {
         }
         queuedCycles.clear();
         pendingFlowRefreshes.clear();
+        rateLimitWaitLogged.clear();
         restoreDueCycles(true, false);
         if (!activeCycles.isEmpty()) {
             plugin.getLogger().log(Level.SEVERE, "Unable to restore one or more tripwires during shutdown.");
@@ -169,20 +181,21 @@ public final class TripwireDuplicationService implements Listener {
         if (!plugin.isMechanicEnabled()) {
             queuedCycles.clear();
             pendingFlowRefreshes.clear();
+            rateLimitWaitLogged.clear();
             restoreDueCycles(false, false);
             stopTickerIfIdle();
             return;
         }
         restoreDueCycles(false, true);
-        startQueuedCycle();
         processPendingFlowRefreshes();
+        startQueuedCycle();
         stopTickerIfIdle();
     }
 
     private void restoreDueCycles(boolean forceLoad, boolean continueCycles) {
-        Iterator<Map.Entry<TripwireFarm.Key, ActiveCycle>> iterator = activeCycles.entrySet().iterator();
+        Iterator<Map.Entry<CycleKey, ActiveCycle>> iterator = activeCycles.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<TripwireFarm.Key, ActiveCycle> entry = iterator.next();
+            Map.Entry<CycleKey, ActiveCycle> entry = iterator.next();
             ActiveCycle cycle = entry.getValue();
             if (!continueCycles || forceLoad || cycle.restoreAtTick() <= currentTick) {
                 try {
@@ -200,9 +213,9 @@ public final class TripwireDuplicationService implements Listener {
     }
 
     private void startQueuedCycle() {
-        Iterator<Map.Entry<TripwireFarm.Key, PendingCycle>> iterator = queuedCycles.entrySet().iterator();
+        Iterator<Map.Entry<CycleKey, PendingCycle>> iterator = queuedCycles.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<TripwireFarm.Key, PendingCycle> entry = iterator.next();
+            Map.Entry<CycleKey, PendingCycle> entry = iterator.next();
             PendingCycle pending = entry.getValue();
             if (!isFarmLoaded(pending.farm())) {
                 continue;
@@ -210,12 +223,17 @@ public final class TripwireDuplicationService implements Listener {
             if (!lineFinder.isValidLine(pending.farm())
                     || pending.block().getType() != Material.TRIPWIRE) {
                 iterator.remove();
-                logCycle(pending, false, Failure.FARM_CHANGED);
+                rateLimitWaitLogged.remove(entry.getKey());
+                logCycle("rejected", pending, "not-tested", Failure.FARM_CHANGED);
                 continue;
             }
             if (!rateLimiter.tryAcquire()) {
+                if (rateLimitWaitLogged.add(entry.getKey())) {
+                    logCycle("rate-limited", pending, "denied", Failure.NONE);
+                }
                 return;
             }
+            rateLimitWaitLogged.remove(entry.getKey());
 
             if (!isLoaded(pending.block())) {
                 continue;
@@ -238,11 +256,11 @@ public final class TripwireDuplicationService implements Listener {
             }
             if (!block.getType().isAir()) {
                 farms.invalidateNear(block);
-                logCycle(pending, true, Failure.FARM_CHANGED);
+                logCycle("cycle-failed", pending, "allowed", Failure.FARM_CHANGED);
                 return;
             }
             activeCycles.put(entry.getKey(), new ActiveCycle(pending, currentTick + 1, true));
-            logCycle(pending, true, Failure.NONE);
+            logCycle("cycle-started", pending, "allowed", Failure.NONE);
             return;
         }
     }
@@ -278,10 +296,11 @@ public final class TripwireDuplicationService implements Listener {
         Discovery restored = lineFinder.discover(block);
         if (restored.farm() == null || !restored.farm().key().equals(pending.farm().key())) {
             farms.invalidateNear(block);
-            logCycle(pending, true, restored.failure());
+            logCycle("restore-rejected", pending, "allowed", restored.failure());
             if (continueCycles && !isFarmLoaded(pending.farm())) {
                 pendingFlowRefreshes.put(
-                        pending.farm().key(), new PendingFlowRefresh(pending.farm(), pending.source()));
+                        CycleKey.from(pending.farm(), block),
+                        new PendingFlowRefresh(pending.farm(), pending.source()));
             }
             return true;
         }
@@ -291,19 +310,20 @@ public final class TripwireDuplicationService implements Listener {
                     block.getLocation().add(0.5, 0.1, 0.5),
                     new ItemStack(Material.STRING, 1));
         }
-        logCycle(pending, true, Failure.NONE);
+        logCycle("produced", pending, "allowed", Failure.NONE);
         if (continueCycles && registered) {
             pendingFlowRefreshes.put(
-                    pending.farm().key(), new PendingFlowRefresh(restored.farm(), pending.source()));
+                    CycleKey.from(pending.farm(), block),
+                    new PendingFlowRefresh(restored.farm(), pending.source()));
         }
         return true;
     }
 
     private void processPendingFlowRefreshes() {
-        Iterator<Map.Entry<TripwireFarm.Key, PendingFlowRefresh>> iterator =
+        Iterator<Map.Entry<CycleKey, PendingFlowRefresh>> iterator =
                 pendingFlowRefreshes.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<TripwireFarm.Key, PendingFlowRefresh> entry = iterator.next();
+            Map.Entry<CycleKey, PendingFlowRefresh> entry = iterator.next();
             PendingFlowRefresh refresh = entry.getValue();
             if (!isFarmLoaded(refresh.farm()) || !isLoaded(refresh.source())) {
                 continue;
@@ -367,32 +387,52 @@ public final class TripwireDuplicationService implements Listener {
     }
 
     private void logFlow(
-            Block source, Block target, boolean sourceValid, boolean tripwireValid,
+            Block source, Block target, TripwireFarm farm, boolean sourceValid, boolean tripwireValid,
             boolean lineRecognized, boolean structureValid,
-            Boolean rateLimiterAllowed, Failure failure) {
+            String cycleState, Boolean rateLimiterAllowed, Failure failure) {
         if (!debug) {
             return;
         }
         Tripwire tripwire = target.getBlockData() instanceof Tripwire data ? data : null;
-        plugin.getLogger().info("BlockFromToEvent source=" + source.getType()
+        int position = farm == null ? -1 : farm.wires().indexOf(target) + 1;
+        plugin.getLogger().info("BlockFromToEvent module=" + (farm == null ? "unresolved" : farm.key())
+                + " length=" + (farm == null ? 0 : farm.wires().size())
+                + " position=" + (position < 1 ? "unmatched" : position)
+                + " source=" + source.getType() + "@" + describeBlock(source)
                 + " source-waterlogged=" + isWaterlogged(source)
-                + " destination=" + target.getType()
+                + " tripwire=" + target.getType() + "@" + describeBlock(target)
                 + " tripwire-data=" + (tripwire == null ? "none" : tripwire)
+                + " hooks=" + (farm == null ? "unresolved"
+                        : describeBlock(farm.firstHook()) + "/" + describeBlock(farm.secondHook()))
                 + " source-valid=" + sourceValid
                 + " tripwire-valid=" + tripwireValid
                 + " line-recognized=" + lineRecognized
                 + " structure-valid=" + structureValid
+                + " cycle-state=" + cycleState
                 + " rate-limiter-allowed="
-                + (rateLimiterAllowed == null ? "queued" : rateLimiterAllowed)
+                + (rateLimiterAllowed == null ? "not-yet-tested" : rateLimiterAllowed)
                 + " failure-reason=" + failure);
     }
 
-    private void logCycle(PendingCycle pending, boolean rateLimiterAllowed, Failure failure) {
+    private void logCycle(
+            String stage, PendingCycle pending, String rateLimiterState, Failure failure) {
         if (debug) {
-            plugin.getLogger().info("Tripwire cycle farm=" + pending.farm().key()
-                    + " rate-limiter-allowed=" + rateLimiterAllowed
+            int position = pending.farm().wires().indexOf(pending.block()) + 1;
+            plugin.getLogger().info("Tripwire cycle stage=" + stage
+                    + " module=" + pending.farm().key()
+                    + " length=" + pending.farm().wires().size()
+                    + " position=" + (position < 1 ? "unmatched" : position)
+                    + " source=" + describeBlock(pending.source())
+                    + " tripwire=" + describeBlock(pending.block())
+                    + " hooks=" + describeBlock(pending.farm().firstHook())
+                    + "/" + describeBlock(pending.farm().secondHook())
+                    + " rate-limiter-state=" + rateLimiterState
                     + " failure-reason=" + failure);
         }
+    }
+
+    private static String describeBlock(Block block) {
+        return block.getWorld().getUID() + ":" + block.getX() + "," + block.getY() + "," + block.getZ();
     }
 
     private static boolean isWaterlogged(Block block) {
@@ -406,5 +446,11 @@ public final class TripwireDuplicationService implements Listener {
     }
 
     private record PendingFlowRefresh(TripwireFarm farm, Block source) {
+    }
+
+    private record CycleKey(TripwireFarm.Key module, FarmRegistry.BlockKey position) {
+        private static CycleKey from(TripwireFarm farm, Block block) {
+            return new CycleKey(farm.key(), FarmRegistry.BlockKey.from(block));
+        }
     }
 }
