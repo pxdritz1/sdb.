@@ -13,6 +13,7 @@ import sdb.px.ratelimit.GlobalRateLimiter;
 public final class StringDuperPlugin extends JavaPlugin {
     private boolean enabled;
     private BukkitTask maintenanceTask;
+    private TripwireDuplicationService duplicationService;
 
     @Override
     public void onEnable() {
@@ -31,8 +32,7 @@ public final class StringDuperPlugin extends JavaPlugin {
         ModuleRegistry modules = new ModuleRegistry(settings.maxActiveModules());
         GlobalRateLimiter rateLimiter = new GlobalRateLimiter(
                 settings.perTick(), settings.perSecond(), settings.perHour());
-        TripwireDuplicationService duplicationService =
-                new TripwireDuplicationService(this, modules, rateLimiter);
+        duplicationService = new TripwireDuplicationService(this, modules, rateLimiter, settings.debug());
 
         getServer().getPluginManager().registerEvents(new TripwireFlowListener(this, duplicationService), this);
         StringDuperCommand command = new StringDuperCommand(this);
@@ -46,6 +46,9 @@ public final class StringDuperPlugin extends JavaPlugin {
     public void onDisable() {
         if (maintenanceTask != null) {
             maintenanceTask.cancel();
+        }
+        if (duplicationService != null) {
+            duplicationService.shutdown();
         }
     }
 

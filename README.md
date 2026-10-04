@@ -36,6 +36,7 @@ operators only.
 
 ```yaml
 enabled: true
+debug: false
 
 modules:
   max-active: 4
@@ -46,7 +47,7 @@ limits:
   per-hour: 5000.0
 ```
 
-limits are global, shared across the whole server.
+limits are global, shared across the whole server. Set `debug: true` to log water flows targeting tripwire and their validation/rate-limit results.
 
 ### compatibility
 

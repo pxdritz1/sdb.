@@ -1,4 +1,5 @@
 enabled: true
+debug: false
 
 modules:
   max-active: 4

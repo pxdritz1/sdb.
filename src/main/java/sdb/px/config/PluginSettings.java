@@ -2,18 +2,25 @@ package sdb.px.config;
 
 import org.bukkit.configuration.file.FileConfiguration;
 
-public record PluginSettings(boolean enabled, int maxActiveModules, double perTick, double perSecond, double perHour) {
+public record PluginSettings(
+        boolean enabled, boolean debug, int maxActiveModules, double perTick, double perSecond, double perHour) {
     public static PluginSettings load(FileConfiguration config) {
         Object enabledValue = config.get("enabled");
         if (!(enabledValue instanceof Boolean enabled)) {
             throw new IllegalArgumentException("Configuration value 'enabled' must be true or false.");
         }
 
+        Object debugValue = config.get("debug");
+        if (debugValue != null && !(debugValue instanceof Boolean)) {
+            throw new IllegalArgumentException("Configuration value 'debug' must be true or false.");
+        }
+
         int maxActiveModules = readModuleLimit(config.get("modules.max-active"));
         double perTick = readRateLimit(config.get("limits.per-tick"), "limits.per-tick");
         double perSecond = readRateLimit(config.get("limits.per-second"), "limits.per-second");
         double perHour = readRateLimit(config.get("limits.per-hour"), "limits.per-hour");
-        return new PluginSettings(enabled, maxActiveModules, perTick, perSecond, perHour);
+        return new PluginSettings(
+                enabled, Boolean.TRUE.equals(debugValue), maxActiveModules, perTick, perSecond, perHour);
     }
 
     private static int readModuleLimit(Object value) {
